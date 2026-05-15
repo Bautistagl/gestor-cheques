@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { Cheque, ChequeFormData } from '@/types/cheque';
+import { Cheque, ChequeFormData, TipoCheque } from '@/types/cheque';
 import { agregarCheque, actualizarCheque } from '@/lib/cheques';
 
 interface Props {
@@ -18,6 +18,8 @@ const fechaHoyISO = (): string => {
 };
 
 const FORM_INICIAL: ChequeFormData = {
+  numero: '',
+  tipo: 'fisico',
   fechaCreacion: fechaHoyISO(),
   fechaCobro: '',
   empresa: '',
@@ -37,6 +39,8 @@ export default function ModalCheque({ cheque, onCerrar }: Props) {
   useEffect(() => {
     if (cheque) {
       setForm({
+        numero: cheque.numero ?? '',
+        tipo: cheque.tipo ?? 'fisico',
         fechaCreacion: cheque.fechaCreacion,
         fechaCobro: cheque.fechaCobro,
         empresa: cheque.empresa,
@@ -104,6 +108,47 @@ export default function ModalCheque({ cheque, onCerrar }: Props) {
 
         {/* Form */}
         <form onSubmit={handleSubmit} className="p-5 space-y-5">
+          <div>
+            <label className={LABEL_CLASS}>Tipo de cheque</label>
+            <div className="grid grid-cols-2 gap-3">
+              {(
+                [
+                  { value: 'fisico', label: 'Físico', emoji: '📄' },
+                  { value: 'electronico', label: 'Electrónico', emoji: '💻' },
+                ] as { value: TipoCheque; label: string; emoji: string }[]
+              ).map((opt) => {
+                const activo = form.tipo === opt.value;
+                return (
+                  <button
+                    key={opt.value}
+                    type="button"
+                    onClick={() => set('tipo', opt.value)}
+                    className={`px-4 py-4 rounded-xl border-2 font-bold text-base transition-colors ${
+                      activo
+                        ? 'bg-blue-700 text-white border-blue-700'
+                        : 'bg-white text-gray-800 border-gray-300 hover:bg-gray-50'
+                    }`}
+                  >
+                    <span className="text-xl mr-2">{opt.emoji}</span>
+                    {opt.label}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+
+          <div>
+            <label className={LABEL_CLASS}>Número de cheque</label>
+            <input
+              type="text"
+              inputMode="numeric"
+              value={form.numero ?? ''}
+              onChange={(e) => set('numero', e.target.value)}
+              placeholder="Ej: 12345678"
+              className={INPUT_CLASS}
+            />
+          </div>
+
           <div>
             <label className={LABEL_CLASS}>Empresa / A quién se le hizo el cheque</label>
             <input

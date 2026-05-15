@@ -75,8 +75,8 @@ export default function TarjetaCheque({ cheque, onEditar }: Props) {
           : 'bg-white border-gray-300 shadow-sm'
       }`}
     >
-      {/* Status badge */}
-      <div className="mb-3">
+      {/* Badges row */}
+      <div className="mb-3 flex flex-wrap gap-2">
         {cheque.cobrado ? (
           <span className="inline-block text-base px-3 py-1.5 rounded-full font-bold bg-green-200 text-green-900">
             ✓ Cobrado
@@ -90,12 +90,21 @@ export default function TarjetaCheque({ cheque, onEditar }: Props) {
             Pendiente · {labelDias()}
           </span>
         )}
+        <span className="inline-block text-base px-3 py-1.5 rounded-full font-bold bg-gray-200 text-gray-900">
+          {cheque.tipo === 'electronico' ? '💻 Electrónico' : '📄 Físico'}
+        </span>
       </div>
 
       {/* Empresa */}
       <h3 className="font-bold text-gray-900 text-2xl leading-tight break-words">
         {cheque.empresa}
       </h3>
+
+      {cheque.numero && (
+        <p className="text-gray-700 text-base font-semibold mt-1">
+          N° {cheque.numero}
+        </p>
+      )}
 
       {/* Monto */}
       <p className="text-4xl font-bold text-gray-900 mt-2 break-words">
