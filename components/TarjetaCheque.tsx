@@ -1,7 +1,12 @@
 'use client';
 
 import { Cheque } from '@/types/cheque';
-import { marcarComoCobrado, eliminarCheque } from '@/lib/cheques';
+import {
+  marcarComoCobrado,
+  marcarComoPendiente,
+  eliminarCheque,
+  getEstado,
+} from '@/lib/cheques';
 
 interface Props {
   cheque: Cheque;
@@ -35,6 +40,7 @@ const diasHasta = (fecha: string): number => {
 };
 
 export default function TarjetaCheque({ cheque, onEditar }: Props) {
+  const estado = getEstado(cheque);
   const dias = diasHasta(cheque.fechaCobro);
   const esHoy = dias === 0;
 
@@ -55,6 +61,16 @@ export default function TarjetaCheque({ cheque, onEditar }: Props) {
     }
   };
 
+  const handleRevertir = async () => {
+    if (
+      confirm(
+        `¿Volver a marcar como pendiente el cheque de ${cheque.empresa}?`
+      )
+    ) {
+      await marcarComoPendiente(cheque.id);
+    }
+  };
+
   const handleEliminar = async () => {
     if (
       confirm(
@@ -65,21 +81,27 @@ export default function TarjetaCheque({ cheque, onEditar }: Props) {
     }
   };
 
+  // Estilos según el estado
+  const cardClass =
+    estado === 'cobrado'
+      ? 'bg-green-50 border-green-300'
+      : estado === 'vencido'
+      ? 'bg-red-50 border-red-400'
+      : esHoy
+      ? 'bg-amber-50 border-amber-400 shadow-md'
+      : 'bg-white border-gray-300 shadow-sm';
+
   return (
-    <div
-      className={`rounded-2xl border-2 p-5 transition-all ${
-        cheque.cobrado
-          ? 'bg-green-50 border-green-300'
-          : esHoy
-          ? 'bg-amber-50 border-amber-400 shadow-md'
-          : 'bg-white border-gray-300 shadow-sm'
-      }`}
-    >
+    <div className={`rounded-2xl border-2 p-5 transition-all ${cardClass}`}>
       {/* Badges row */}
       <div className="mb-3 flex flex-wrap gap-2">
-        {cheque.cobrado ? (
+        {estado === 'cobrado' ? (
           <span className="inline-block text-base px-3 py-1.5 rounded-full font-bold bg-green-200 text-green-900">
             ✓ Cobrado
+          </span>
+        ) : estado === 'vencido' ? (
+          <span className="inline-block text-base px-3 py-1.5 rounded-full font-bold bg-red-200 text-red-900">
+            ⚠ Vencido
           </span>
         ) : esHoy ? (
           <span className="inline-block text-base px-3 py-1.5 rounded-full font-bold bg-amber-200 text-amber-900">
@@ -121,12 +143,18 @@ export default function TarjetaCheque({ cheque, onEditar }: Props) {
         </div>
         <div>
           <p className="text-gray-600 text-base font-semibold">
-            {cheque.cobrado ? 'Fue cobrado el' : 'Se cobra el'}
+            {estado === 'cobrado'
+              ? 'Fue cobrado el'
+              : estado === 'vencido'
+              ? 'Venció el'
+              : 'Se cobra el'}
           </p>
           <p
             className={`font-bold text-xl mt-0.5 ${
-              cheque.cobrado
+              estado === 'cobrado'
                 ? 'text-green-800'
+                : estado === 'vencido'
+                ? 'text-red-800'
                 : esHoy
                 ? 'text-amber-800'
                 : 'text-gray-900'
@@ -139,7 +167,7 @@ export default function TarjetaCheque({ cheque, onEditar }: Props) {
 
       {/* Actions */}
       <div className="mt-4 flex flex-wrap gap-2">
-        {!cheque.cobrado && (
+        {estado === 'pendiente' && (
           <>
             <button
               onClick={() => onEditar(cheque)}
@@ -155,11 +183,40 @@ export default function TarjetaCheque({ cheque, onEditar }: Props) {
             </button>
           </>
         )}
+
+        {estado === 'vencido' && (
+          <>
+            <button
+              onClick={handleCobrar}
+              className="flex-1 min-w-[140px] px-4 py-3.5 text-base bg-green-600 text-white rounded-xl hover:bg-green-700 font-bold transition-colors"
+            >
+              ✓ Marcar cobrado
+            </button>
+            <button
+              onClick={handleRevertir}
+              className="flex-1 min-w-[140px] px-4 py-3.5 text-base border-2 border-gray-300 text-gray-800 bg-white rounded-xl hover:bg-gray-50 font-bold transition-colors"
+            >
+              ↺ Volver a pendiente
+            </button>
+          </>
+        )}
+
+        {estado === 'cobrado' && (
+          <button
+            onClick={handleRevertir}
+            className="flex-1 min-w-[140px] px-4 py-3.5 text-base border-2 border-gray-300 text-gray-800 bg-white rounded-xl hover:bg-gray-50 font-bold transition-colors"
+          >
+            ↺ Volver a pendiente
+          </button>
+        )}
+
         <button
           onClick={handleEliminar}
           aria-label="Eliminar cheque"
           className={`${
-            cheque.cobrado ? 'flex-1' : 'flex-1 min-w-[110px] sm:flex-none sm:min-w-0 sm:w-auto'
+            estado === 'pendiente'
+              ? 'flex-1 min-w-[110px] sm:flex-none sm:min-w-0 sm:w-auto'
+              : 'flex-1'
           } px-4 py-3.5 text-base border-2 border-red-300 text-red-700 bg-white rounded-xl hover:bg-red-50 font-bold transition-colors`}
         >
           🗑 Eliminar

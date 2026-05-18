@@ -1,17 +1,14 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Cheque } from '@/types/cheque';
-import { suscribirCheques, autoMarcarCobrados } from '@/lib/cheques';
+import { suscribirCheques, autoMarcarVencidos, getEstado } from '@/lib/cheques';
 import ModalCheque from '@/components/ModalCheque';
 import TarjetaCheque from '@/components/TarjetaCheque';
+import Calendario from '@/components/Calendario';
+import ModalDia from '@/components/ModalDia';
 
-type Pestana = 'por-cobrar' | 'cobrados' | 'todos';
-
-const formatFecha = (f: string): string => {
-  const [y, m, d] = f.split('-');
-  return `${d}/${m}/${y}`;
-};
+type Pestana = 'calendario' | 'cobrados' | 'vencidos';
 
 const formatMonto = (n: number): string =>
   new Intl.NumberFormat('es-AR', {
@@ -22,36 +19,46 @@ const formatMonto = (n: number): string =>
 
 export default function Home() {
   const [cheques, setCheques] = useState<Cheque[]>([]);
-  const [pestana, setPestana] = useState<Pestana>('por-cobrar');
+  const [pestana, setPestana] = useState<Pestana>('calendario');
   const [modalAbierto, setModalAbierto] = useState(false);
   const [chequeEditar, setChequeEditar] = useState<Cheque | null>(null);
+  const [diaSeleccionado, setDiaSeleccionado] = useState<string | null>(null);
   const [cargando, setCargando] = useState(true);
 
   useEffect(() => {
     const unsub = suscribirCheques(async (datos) => {
-      await autoMarcarCobrados(datos);
+      // Auto-marcar vencidos (NO se marca nada como cobrado automáticamente)
+      await autoMarcarVencidos(datos);
       setCheques(datos);
       setCargando(false);
     });
     return unsub;
   }, []);
 
-  const pendientes = cheques.filter((c) => !c.cobrado);
-  const cobrados = cheques.filter((c) => c.cobrado);
+  // Clasificar cheques según estado efectivo
+  const { pendientes, cobrados, vencidos } = useMemo(() => {
+    const pendientes: Cheque[] = [];
+    const cobrados: Cheque[] = [];
+    const vencidos: Cheque[] = [];
+    for (const c of cheques) {
+      const e = getEstado(c);
+      if (e === 'cobrado') cobrados.push(c);
+      else if (e === 'vencido') vencidos.push(c);
+      else pendientes.push(c);
+    }
+    return { pendientes, cobrados, vencidos };
+  }, [cheques]);
 
   const totalPendiente = pendientes.reduce((s, c) => s + c.monto, 0);
   const totalCobrado = cobrados.reduce((s, c) => s + c.monto, 0);
+  const totalVencido = vencidos.reduce((s, c) => s + c.monto, 0);
 
-  const porFecha = pendientes.reduce<Record<string, Cheque[]>>((acc, c) => {
-    if (!acc[c.fechaCobro]) acc[c.fechaCobro] = [];
-    acc[c.fechaCobro].push(c);
-    return acc;
-  }, {});
-
-  const fechasOrdenadas = Object.keys(porFecha).sort();
-
-  const listaActual =
-    pestana === 'por-cobrar' ? pendientes : pestana === 'cobrados' ? cobrados : cheques;
+  const chequesDelDia = useMemo(() => {
+    if (!diaSeleccionado) return [];
+    return pendientes
+      .filter((c) => c.fechaCobro === diaSeleccionado)
+      .sort((a, b) => b.monto - a.monto);
+  }, [pendientes, diaSeleccionado]);
 
   const abrirEditar = (cheque: Cheque) => {
     setChequeEditar(cheque);
@@ -83,8 +90,7 @@ export default function Home() {
             <h1 className="text-2xl font-bold">Gestor de Cheques</h1>
             {pendientes.length > 0 && (
               <p className="text-blue-50 text-base mt-1 font-semibold">
-                {pendientes.length} pendiente{pendientes.length !== 1 ? 's' : ''} ·{' '}
-                {formatMonto(totalPendiente)}
+                {pendientes.length} por cobrar · {formatMonto(totalPendiente)}
               </p>
             )}
           </div>
@@ -102,9 +108,9 @@ export default function Home() {
         <div className="flex gap-1 bg-gray-200 p-1.5 rounded-2xl">
           {(
             [
-              { id: 'por-cobrar', label: `Por cobrar`, count: pendientes.length },
-              { id: 'cobrados', label: `Cobrados`, count: cobrados.length },
-              { id: 'todos', label: `Todos`, count: cheques.length },
+              { id: 'calendario', label: 'Calendario', count: pendientes.length },
+              { id: 'cobrados', label: 'Cobrados', count: cobrados.length },
+              { id: 'vencidos', label: 'Vencidos', count: vencidos.length },
             ] as { id: Pestana; label: string; count: number }[]
           ).map((tab) => (
             <button
@@ -131,86 +137,33 @@ export default function Home() {
 
       {/* Content */}
       <main className="max-w-2xl mx-auto px-4 py-5 pb-12">
-        {/* === POR COBRAR === */}
-        {pestana === 'por-cobrar' && (
-          <div>
-            {pendientes.length === 0 ? (
+        {/* === CALENDARIO === */}
+        {pestana === 'calendario' && (
+          <div className="space-y-5">
+            <Calendario
+              cheques={pendientes}
+              onSeleccionarDia={(f) => setDiaSeleccionado(f)}
+            />
+
+            {pendientes.length === 0 && (
               <EmptyState
                 emoji="🎉"
                 titulo="Todo al día"
                 subtitulo="No hay cheques pendientes de cobro"
               />
-            ) : (
-              <div className="space-y-7">
-                {fechasOrdenadas.map((fecha) => {
-                  const grupo = porFecha[fecha];
-                  const totalGrupo = grupo.reduce((s, c) => s + c.monto, 0);
-                  return (
-                    <div key={fecha}>
-                      {/* Date header */}
-                      <div className="flex items-center justify-between mb-3 px-1 flex-wrap gap-2">
-                        <div className="flex items-center gap-2">
-                          <span className="text-2xl">📅</span>
-                          <div>
-                            <p className="font-bold text-gray-900 text-xl leading-tight">
-                              {formatFecha(fecha)}
-                            </p>
-                            <p className="text-gray-600 text-base">
-                              {grupo.length} cheque{grupo.length !== 1 ? 's' : ''}
-                            </p>
-                          </div>
-                        </div>
-                        <div className="text-right">
-                          <p className="text-sm text-gray-700 font-semibold">Sale del banco</p>
-                          <p className="font-bold text-red-700 text-xl">
-                            {formatMonto(totalGrupo)}
-                          </p>
-                        </div>
-                      </div>
-                      {/* Cards */}
-                      <div className="space-y-3">
-                        {grupo.map((c) => (
-                          <TarjetaCheque key={c.id} cheque={c} onEditar={abrirEditar} />
-                        ))}
-                      </div>
-                    </div>
-                  );
-                })}
+            )}
 
-                {/* Segmented total */}
-                <div className="bg-red-50 border-2 border-red-300 rounded-2xl p-5 mt-4">
-                  <p className="text-xl text-red-800 font-bold text-center mb-4">
-                    Dinero por salir del banco
-                  </p>
-                  <ul className="divide-y-2 divide-red-200">
-                    {fechasOrdenadas.map((fecha) => {
-                      const total = porFecha[fecha].reduce((s, c) => s + c.monto, 0);
-                      const cantidad = porFecha[fecha].length;
-                      return (
-                        <li
-                          key={fecha}
-                          className="flex items-center justify-between py-3.5 gap-3"
-                        >
-                          <div className="min-w-0">
-                            <p className="font-bold text-red-900 text-xl">
-                              {formatFecha(fecha)}
-                            </p>
-                            <p className="text-base text-red-700 font-medium">
-                              {cantidad} cheque{cantidad !== 1 ? 's' : ''}
-                            </p>
-                          </div>
-                          <p className="font-bold text-red-800 text-2xl">{formatMonto(total)}</p>
-                        </li>
-                      );
-                    })}
-                  </ul>
-                  <div className="border-t-4 border-red-400 mt-3 pt-4 flex items-center justify-between">
-                    <p className="text-xl font-bold text-red-900">Total</p>
-                    <p className="text-3xl font-bold text-red-800">
-                      {formatMonto(totalPendiente)}
-                    </p>
-                  </div>
-                </div>
+            {pendientes.length > 0 && (
+              <div className="bg-red-50 border-2 border-red-300 rounded-2xl p-5">
+                <p className="text-lg text-red-800 font-bold text-center">
+                  Total por cobrar
+                </p>
+                <p className="text-3xl font-bold text-red-800 text-center mt-2">
+                  {formatMonto(totalPendiente)}
+                </p>
+                <p className="text-base text-red-700 font-semibold text-center mt-1">
+                  Tocá un día del calendario para ver el detalle
+                </p>
               </div>
             )}
           </div>
@@ -223,7 +176,7 @@ export default function Home() {
               <EmptyState
                 emoji="📋"
                 titulo="Sin cheques cobrados"
-                subtitulo="Acá aparecerán los cheques que ya fueron cobrados"
+                subtitulo='Marcá un cheque como "cobrado" cuando lo confirmes manualmente'
               />
             ) : (
               <div className="space-y-3">
@@ -241,27 +194,46 @@ export default function Home() {
           </div>
         )}
 
-        {/* === TODOS === */}
-        {pestana === 'todos' && (
+        {/* === VENCIDOS === */}
+        {pestana === 'vencidos' && (
           <div>
-            {cheques.length === 0 ? (
+            {vencidos.length === 0 ? (
               <EmptyState
-                emoji="📂"
-                titulo="Sin cheques registrados"
-                subtitulo='Tocá "Nuevo cheque" para empezar'
+                emoji="✅"
+                titulo="Sin cheques vencidos"
+                subtitulo="Acá aparecen los cheques cuya fecha pasó y no fueron marcados como cobrados"
               />
             ) : (
               <div className="space-y-3">
-                {listaActual.map((c) => (
+                {vencidos.map((c) => (
                   <TarjetaCheque key={c.id} cheque={c} onEditar={abrirEditar} />
                 ))}
+                <div className="bg-red-50 border-2 border-red-300 rounded-2xl p-5 text-center mt-4">
+                  <p className="text-xl text-red-900 font-bold">Total vencido</p>
+                  <p className="text-4xl font-bold text-red-800 mt-2">
+                    {formatMonto(totalVencido)}
+                  </p>
+                </div>
               </div>
             )}
           </div>
         )}
       </main>
 
-      {/* Modal */}
+      {/* Modal de día */}
+      {diaSeleccionado && (
+        <ModalDia
+          fecha={diaSeleccionado}
+          cheques={chequesDelDia}
+          onCerrar={() => setDiaSeleccionado(null)}
+          onEditar={(c) => {
+            setDiaSeleccionado(null);
+            abrirEditar(c);
+          }}
+        />
+      )}
+
+      {/* Modal de cheque (alta/edición) */}
       {modalAbierto && <ModalCheque cheque={chequeEditar} onCerrar={cerrarModal} />}
     </div>
   );
