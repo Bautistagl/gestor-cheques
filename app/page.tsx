@@ -24,6 +24,7 @@ export default function Home() {
   const [chequeEditar, setChequeEditar] = useState<Cheque | null>(null);
   const [diaSeleccionado, setDiaSeleccionado] = useState<string | null>(null);
   const [cargando, setCargando] = useState(true);
+  const [busqueda, setBusqueda] = useState('');
 
   useEffect(() => {
     const unsub = suscribirCheques(async (datos) => {
@@ -52,6 +53,19 @@ export default function Home() {
   const totalPendiente = pendientes.reduce((s, c) => s + c.monto, 0);
   const totalCobrado = cobrados.reduce((s, c) => s + c.monto, 0);
   const totalVencido = vencidos.reduce((s, c) => s + c.monto, 0);
+
+  // Resultados de búsqueda por número/código de cheque (sobre todos los cheques)
+  const terminoBusqueda = busqueda.trim().toLowerCase();
+  const resultadosBusqueda = useMemo(() => {
+    if (!terminoBusqueda) return [];
+    return cheques
+      .filter((c) => {
+        const numero = (c.numero ?? '').toLowerCase();
+        const empresa = (c.empresa ?? '').toLowerCase();
+        return numero.includes(terminoBusqueda) || empresa.includes(terminoBusqueda);
+      })
+      .sort((a, b) => a.fechaCobro.localeCompare(b.fechaCobro));
+  }, [cheques, terminoBusqueda]);
 
   const chequesDelDia = useMemo(() => {
     if (!diaSeleccionado) return [];
@@ -103,7 +117,34 @@ export default function Home() {
         </div>
       </header>
 
-      {/* Tabs */}
+      {/* Buscador por código/número de cheque */}
+      <div className="max-w-2xl mx-auto px-4 pt-4">
+        <div className="relative">
+          <span className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400 text-xl pointer-events-none">
+            🔍
+          </span>
+          <input
+            type="text"
+            inputMode="search"
+            value={busqueda}
+            onChange={(e) => setBusqueda(e.target.value)}
+            placeholder="Buscar por N° de cheque o empresa..."
+            className="w-full pl-12 pr-12 py-3.5 text-base font-semibold border-2 border-gray-300 rounded-2xl bg-white text-gray-900 placeholder:text-gray-400 focus:outline-none focus:border-blue-600"
+          />
+          {busqueda && (
+            <button
+              onClick={() => setBusqueda('')}
+              aria-label="Limpiar búsqueda"
+              className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-700 text-2xl font-bold leading-none"
+            >
+              ×
+            </button>
+          )}
+        </div>
+      </div>
+
+      {/* Tabs (ocultos durante la búsqueda) */}
+      {!terminoBusqueda && (
       <div className="max-w-2xl mx-auto px-4 pt-4">
         <div className="flex gap-1 bg-gray-200 p-1.5 rounded-2xl">
           {(
@@ -134,9 +175,34 @@ export default function Home() {
           ))}
         </div>
       </div>
+      )}
 
       {/* Content */}
       <main className="max-w-2xl mx-auto px-4 py-5 pb-12">
+        {/* === RESULTADOS DE BÚSQUEDA === */}
+        {terminoBusqueda ? (
+          <div className="space-y-3">
+            <p className="text-base font-bold text-gray-700">
+              {resultadosBusqueda.length === 0
+                ? `Sin resultados para "${busqueda.trim()}"`
+                : `${resultadosBusqueda.length} resultado${
+                    resultadosBusqueda.length !== 1 ? 's' : ''
+                  } para "${busqueda.trim()}"`}
+            </p>
+            {resultadosBusqueda.length === 0 ? (
+              <EmptyState
+                emoji="🔍"
+                titulo="No se encontró ningún cheque"
+                subtitulo="Probá con otro número de cheque o nombre de empresa"
+              />
+            ) : (
+              resultadosBusqueda.map((c) => (
+                <TarjetaCheque key={c.id} cheque={c} onEditar={abrirEditar} />
+              ))
+            )}
+          </div>
+        ) : (
+        <>
         {/* === CALENDARIO === */}
         {pestana === 'calendario' && (
           <div className="space-y-5">
@@ -217,6 +283,8 @@ export default function Home() {
               </div>
             )}
           </div>
+        )}
+        </>
         )}
       </main>
 
